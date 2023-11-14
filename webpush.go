@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -77,19 +78,19 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	// Authentication secret (auth_secret)
 	authSecret, err := decodeSubscriptionKey(s.Keys.Auth)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decoding keys.auth: %w", err)
 	}
 
 	// dh (Diffie Hellman)
 	dh, err := decodeSubscriptionKey(s.Keys.P256dh)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decoding keys.p256dh: %w", err)
 	}
 
 	// Generate 16 byte salt
 	salt, err := saltFunc()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generating salt: %w", err)
 	}
 
 	// Create the ecdh_secret shared key pair
@@ -98,7 +99,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	// Application server key pairs (single use)
 	localPrivateKey, x, y, err := elliptic.GenerateKey(curve, rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("elliptic generateKey: %w", err)
 	}
 
 	localPublicKey := elliptic.Marshal(curve, x, y)
@@ -128,7 +129,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	prkHKDF := hkdf.New(hash, sharedECDHSecret, authSecret, prkInfoBuf.Bytes())
 	ikm, err := getHKDFKey(prkHKDF, 32)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prkHKDF key: %w", err)
 	}
 
 	// Derive Content Encryption Key
@@ -136,7 +137,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	contentHKDF := hkdf.New(hash, ikm, salt, contentEncryptionKeyInfo)
 	contentEncryptionKey, err := getHKDFKey(contentHKDF, 16)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("contentHKDF key: %w", err)
 	}
 
 	// Derive the Nonce
@@ -144,18 +145,18 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	nonceHKDF := hkdf.New(hash, ikm, salt, nonceInfo)
 	nonce, err := getHKDFKey(nonceHKDF, 12)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("nonceHKDF key: %w", err)
 	}
 
 	// Cipher
 	c, err := aes.NewCipher(contentEncryptionKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("aes new cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(c)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cipher new gcm: %w", err)
 	}
 
 	// Get the record size
@@ -183,7 +184,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	// Padding ending delimeter
 	dataBuf.Write([]byte("\x02"))
 	if err := pad(dataBuf, recordLength-recordBuf.Len()); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("pad: %w", err)
 	}
 
 	// Compose the ciphertext
@@ -193,7 +194,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 	// POST request
 	req, err := http.NewRequest("POST", s.Endpoint, recordBuf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new http request: %w", err)
 	}
 
 	if ctx != nil {
@@ -228,7 +229,7 @@ func SendNotificationWithContext(ctx context.Context, message []byte, s *Subscri
 		expiration,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get vapid auth header: %w", err)
 	}
 
 	req.Header.Set("Authorization", vapidAuthHeader)
