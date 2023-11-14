@@ -69,7 +69,7 @@ func getVAPIDAuthorizationHeader(
 	// Create the JWT token
 	subURL, err := url.Parse(endpoint)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse url: %w", err)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
@@ -81,7 +81,7 @@ func getVAPIDAuthorizationHeader(
 	// Decode the VAPID private key
 	decodedVapidPrivateKey, err := decodeVapidKey(vapidPrivateKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decode private vapid key: %w", err)
 	}
 
 	privKey := generateVAPIDHeaderKeys(decodedVapidPrivateKey)
@@ -89,13 +89,13 @@ func getVAPIDAuthorizationHeader(
 	// Sign token with private key
 	jwtString, err := token.SignedString(privKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("sign token with private key: %w", err)
 	}
 
 	// Decode the VAPID public key
 	pubKey, err := decodeVapidKey(vapidPublicKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decode public vapid key: %w", err)
 	}
 
 	return fmt.Sprintf(
